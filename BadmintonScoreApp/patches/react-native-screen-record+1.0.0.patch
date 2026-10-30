@@ -1,0 +1,193 @@
+diff --git a/node_modules/react-native-screen-record/android/src/main/java/com/screenrecord/RecordingGeometry.kt b/node_modules/react-native-screen-record/android/src/main/java/com/screenrecord/RecordingGeometry.kt
+index 2873c76..8444cee 100644
+--- a/node_modules/react-native-screen-record/android/src/main/java/com/screenrecord/RecordingGeometry.kt
++++ b/node_modules/react-native-screen-record/android/src/main/java/com/screenrecord/RecordingGeometry.kt
+@@ -26,8 +26,18 @@ object RecordingGeometry {
+    * The video's size for a view of `viewWidth` × `viewHeight`: `width` wide (made even, at least 2) and as tall as the
+    * view's proportions make it, rounded to an even number, as H.264 needs.
+    */
+-  fun videoSize(width: Int, viewWidth: Int, viewHeight: Int): VideoSize {
++  fun videoSize(
++    width: Int,
++    viewWidth: Int,
++    viewHeight: Int,
++    requestedWidth: Int = width,
++    requestedHeight: Int = 0
++  ): VideoSize {
+     val w = (width / 2 * 2).coerceAtLeast(2)
++    if (requestedHeight > 0 && requestedWidth > 0) {
++      val h = ((w.toDouble() * requestedHeight / requestedWidth / 2).roundToInt() * 2).coerceAtLeast(2)
++      return VideoSize(w, h)
++    }
+     if (viewWidth <= 0 || viewHeight <= 0) {
+       return VideoSize(w, w)
+     }
+diff --git a/node_modules/react-native-screen-record/android/src/main/java/com/screenrecord/ScreenRecordModule.kt b/node_modules/react-native-screen-record/android/src/main/java/com/screenrecord/ScreenRecordModule.kt
+index 5646fe6..5f463ee 100644
+--- a/node_modules/react-native-screen-record/android/src/main/java/com/screenrecord/ScreenRecordModule.kt
++++ b/node_modules/react-native-screen-record/android/src/main/java/com/screenrecord/ScreenRecordModule.kt
+@@ -19,6 +19,7 @@ class ScreenRecordModule(reactContext: ReactApplicationContext) :
+     viewTag: Double,
+     durationMs: Double,
+     width: Double,
++    height: Double,
+     fps: Double,
+     bitRate: Double,
+     promise: Promise
+@@ -48,7 +49,16 @@ class ScreenRecordModule(reactContext: ReactApplicationContext) :
+         return@runOnUiThread
+       }
+       val file = File(reactApplicationContext.cacheDir, "screen-record-${System.currentTimeMillis()}.mp4")
+-      val next = ViewRecorder(view, window, file, durationMs.toLong(), width.toInt(), fps.toInt(), bitRate.toInt())
++      val next = ViewRecorder(
++        view,
++        window,
++        file,
++        durationMs.toLong(),
++        width.toInt(),
++        height.toInt(),
++        fps.toInt(),
++        bitRate.toInt()
++      )
+       recorder = next
+       next.start { result ->
+         recorder = null
+diff --git a/node_modules/react-native-screen-record/android/src/main/java/com/screenrecord/ScreenRecordPackage.kt b/node_modules/react-native-screen-record/android/src/main/java/com/screenrecord/ScreenRecordPackage.kt
+index ea71bc9..335cf8c 100644
+--- a/node_modules/react-native-screen-record/android/src/main/java/com/screenrecord/ScreenRecordPackage.kt
++++ b/node_modules/react-native-screen-record/android/src/main/java/com/screenrecord/ScreenRecordPackage.kt
+@@ -23,8 +23,9 @@ class ScreenRecordPackage : BaseReactPackage() {
+         className = ScreenRecordModule.NAME,
+         canOverrideExistingModule = false,
+         needsEagerInit = false,
++        hasConstants = false,
+         isCxxModule = false,
+-        isTurboModule = true
++        isTurboModule = false
+       )
+     )
+   }
+diff --git a/node_modules/react-native-screen-record/android/src/main/java/com/screenrecord/ViewRecorder.kt b/node_modules/react-native-screen-record/android/src/main/java/com/screenrecord/ViewRecorder.kt
+index 9ac4857..9b4836b 100644
+--- a/node_modules/react-native-screen-record/android/src/main/java/com/screenrecord/ViewRecorder.kt
++++ b/node_modules/react-native-screen-record/android/src/main/java/com/screenrecord/ViewRecorder.kt
+@@ -35,6 +35,7 @@ class ViewRecorder(
+   private val file: File,
+   private val durationMs: Long,
+   private val requestedWidth: Int,
++  private val requestedHeight: Int,
+   fps: Int,
+   bitRate: Int
+ ) {
+@@ -88,7 +89,8 @@ class ViewRecorder(
+     height = video.height
+     val region = RecordingGeometry.sourceRegion(location[0], location[1], view.width, view.height, video)
+     source = Rect(region.left, region.top, region.right, region.bottom)
+-    bitmap = Bitmap.createBitmap(region.width, region.height, Bitmap.Config.ARGB_8888)
++    // PixelCopy scales the source into the destination, avoiding a full-resolution intermediate bitmap.
++    bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+ 
+     val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height).apply {
+       setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
+@@ -109,8 +111,13 @@ class ViewRecorder(
+     val codecs = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.filter { info ->
+       info.isEncoder && info.supportedTypes.any { it.equals(MediaFormat.MIMETYPE_VIDEO_AVC, ignoreCase = true) }
+     }
+-    for (candidate in RecordingGeometry.widthsToTry(requestedWidth)) {
+-      val size = RecordingGeometry.videoSize(candidate, viewWidth, viewHeight)
++    val candidateWidths = if (requestedHeight > 0) {
++      listOf(requestedWidth)
++    } else {
++      RecordingGeometry.widthsToTry(requestedWidth)
++    }
++    for (candidate in candidateWidths) {
++      val size = RecordingGeometry.videoSize(candidate, viewWidth, viewHeight, requestedWidth, requestedHeight)
+       val supported = codecs.any { info ->
+         info.getCapabilitiesForType(MediaFormat.MIMETYPE_VIDEO_AVC)
+           .videoCapabilities?.isSizeSupported(size.width, size.height) == true
+diff --git a/node_modules/react-native-screen-record/lib/module/index.js b/node_modules/react-native-screen-record/lib/module/index.js
+index 483f04a..2ec6dc2 100644
+--- a/node_modules/react-native-screen-record/lib/module/index.js
++++ b/node_modules/react-native-screen-record/lib/module/index.js
+@@ -8,6 +8,7 @@ import NativeScreenRecord from "./NativeScreenRecord.js";
+ const DEFAULTS = {
+   durationMs: 5000,
+   width: 1080,
++  height: 0,
+   fps: 30,
+   bitRate: 10_000_000
+ };
+@@ -21,7 +22,7 @@ const WINDOW = -1;
+  */
+ let pending = 0;
+ function record(tag, options) {
+-  const recording = NativeScreenRecord.startRecording(tag, options.durationMs ?? DEFAULTS.durationMs, options.width ?? DEFAULTS.width, options.fps ?? DEFAULTS.fps, options.bitRate ?? DEFAULTS.bitRate);
++  const recording = NativeScreenRecord.startRecording(tag, options.durationMs ?? DEFAULTS.durationMs, options.width ?? DEFAULTS.width, options.height ?? DEFAULTS.height, options.fps ?? DEFAULTS.fps, options.bitRate ?? DEFAULTS.bitRate);
+   pending += 1;
+   const finish = () => {
+     pending -= 1;
+diff --git a/node_modules/react-native-screen-record/lib/typescript/src/NativeScreenRecord.d.ts b/node_modules/react-native-screen-record/lib/typescript/src/NativeScreenRecord.d.ts
+index 95ed502..f1d3384 100644
+--- a/node_modules/react-native-screen-record/lib/typescript/src/NativeScreenRecord.d.ts
++++ b/node_modules/react-native-screen-record/lib/typescript/src/NativeScreenRecord.d.ts
+@@ -4,7 +4,7 @@ export interface Spec extends TurboModule {
+      * Records the view with `viewTag` (or the whole window when it's -1) into an MP4. Resolves to the file's URI once
+      * `durationMs` has passed (or `stopRecording()` was called, when `durationMs` is 0) and the file is written.
+      */
+-    startRecording(viewTag: number, durationMs: number, width: number, fps: number, bitRate: number): Promise<string>;
++    startRecording(viewTag: number, durationMs: number, width: number, height: number, fps: number, bitRate: number): Promise<string>;
+     /** Ends the recording in progress early; its promise resolves with what was recorded so far. */
+     stopRecording(): void;
+     isRecording(): boolean;
+diff --git a/node_modules/react-native-screen-record/lib/typescript/src/index.d.ts b/node_modules/react-native-screen-record/lib/typescript/src/index.d.ts
+index 2e27e05..852d469 100644
+--- a/node_modules/react-native-screen-record/lib/typescript/src/index.d.ts
++++ b/node_modules/react-native-screen-record/lib/typescript/src/index.d.ts
+@@ -6,8 +6,10 @@ export type RecordTarget = number | {
+ export type RecordOptions = {
+     /** How long to record, in milliseconds. 0 records until `stopRecording()`. Defaults to 5000. */
+     durationMs?: number;
+-    /** The video's width in pixels; the height follows the view's proportions. Defaults to 1080. */
++    /** The video's width in pixels. Defaults to 1080. */
+     width?: number;
++    /** Explicit output height. When supplied, the view is center-cropped to this output aspect ratio. */
++    height?: number;
+     /** Frames per second, at most. Defaults to 30. */
+     fps?: number;
+     /** Average bit rate of the H.264 video, in bits per second. Defaults to 10 Mbit/s. */
+diff --git a/node_modules/react-native-screen-record/src/NativeScreenRecord.ts b/node_modules/react-native-screen-record/src/NativeScreenRecord.ts
+index a19c126..53ee4f8 100644
+--- a/node_modules/react-native-screen-record/src/NativeScreenRecord.ts
++++ b/node_modules/react-native-screen-record/src/NativeScreenRecord.ts
+@@ -9,6 +9,7 @@ export interface Spec extends TurboModule {
+     viewTag: number,
+     durationMs: number,
+     width: number,
++    height: number,
+     fps: number,
+     bitRate: number
+   ): Promise<string>;
+diff --git a/node_modules/react-native-screen-record/src/index.tsx b/node_modules/react-native-screen-record/src/index.tsx
+index 0a70afb..2c6e39c 100644
+--- a/node_modules/react-native-screen-record/src/index.tsx
++++ b/node_modules/react-native-screen-record/src/index.tsx
+@@ -9,8 +9,10 @@ export type RecordTarget =
+ export type RecordOptions = {
+   /** How long to record, in milliseconds. 0 records until `stopRecording()`. Defaults to 5000. */
+   durationMs?: number;
+-  /** The video's width in pixels; the height follows the view's proportions. Defaults to 1080. */
++  /** The video's width in pixels. Defaults to 1080. */
+   width?: number;
++  /** Explicit output height. When supplied, the view is center-cropped to this output aspect ratio. */
++  height?: number;
+   /** Frames per second, at most. Defaults to 30. */
+   fps?: number;
+   /** Average bit rate of the H.264 video, in bits per second. Defaults to 10 Mbit/s. */
+@@ -38,6 +40,7 @@ function record(tag: number, options: RecordOptions) {
+     tag,
+     options.durationMs ?? DEFAULTS.durationMs,
+     options.width ?? DEFAULTS.width,
++    options.height ?? 0,
+     options.fps ?? DEFAULTS.fps,
+     options.bitRate ?? DEFAULTS.bitRate
+   );
