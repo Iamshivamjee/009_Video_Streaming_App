@@ -1,0 +1,30 @@
+# JavaScript dependencies and tool caches
+**/node_modules/
+.metro-cache/
+.expo/
+coverage/
+npm-debug.log*
+yarn-debug.log*
+
+# Android local configuration, caches, and generated outputs
+**/android/.gradle/
+**/android/build/
+**/android/app/build/
+**/android/.cxx/
+**/android/app/.cxx/
+**/android/local.properties
+*.hprof
+*.apk
+*.aab
+
+# iOS dependencies and generated output
+**/ios/Pods/
+**/ios/build/
+**/ios/DerivedData/
+**/ios/**/xcuserdata/
+
+# IDE and operating-system files
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
