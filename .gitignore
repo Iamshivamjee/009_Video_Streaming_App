@@ -9,13 +9,31 @@ yarn-debug.log*
 # Android local configuration, caches, and generated outputs
 **/android/.gradle/
 **/android/build/
-**/android/app/build/
 **/android/.cxx/
 **/android/app/.cxx/
 **/android/local.properties
 *.hprof
 *.apk
 *.aab
+
+# Keep only the release APKs available to commit; ignore all other build output.
+BadmintonScoreApp/android/app/build/**
+!BadmintonScoreApp/android/app/build/outputs/
+BadmintonScoreApp/android/app/build/outputs/**
+!BadmintonScoreApp/android/app/build/outputs/apk/
+BadmintonScoreApp/android/app/build/outputs/apk/**
+!BadmintonScoreApp/android/app/build/outputs/apk/release/
+BadmintonScoreApp/android/app/build/outputs/apk/release/**
+!BadmintonScoreApp/android/app/build/outputs/apk/release/app-release.apk
+
+BadmintonScoreRemote/android/app/build/**
+!BadmintonScoreRemote/android/app/build/outputs/
+BadmintonScoreRemote/android/app/build/outputs/**
+!BadmintonScoreRemote/android/app/build/outputs/apk/
+BadmintonScoreRemote/android/app/build/outputs/apk/**
+!BadmintonScoreRemote/android/app/build/outputs/apk/release/
+BadmintonScoreRemote/android/app/build/outputs/apk/release/**
+!BadmintonScoreRemote/android/app/build/outputs/apk/release/app-release.apk
 
 # iOS dependencies and generated output
 **/ios/Pods/
